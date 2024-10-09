@@ -14,8 +14,27 @@ const AudioRecorder = () => {
         setMediaRecorder(recorder);
 
         // Handelt die verfügbaren Audio-Chunks
-        recorder.ondataavailable = (event) => {
-          setAudioChunks((prevChunks) => [...prevChunks, event.data]);
+        recorder.ondataavailable = async (event) => {
+            try {
+                const audioChunk = event.data;
+            
+                // Konvertiere den Blob in ArrayBuffer
+                const arrayBuffer = await audioChunk.arrayBuffer();
+            
+                // Prüfe, ob die Byte-Länge des ArrayBuffers korrekt ist (Vielfaches von 2)
+                if (arrayBuffer.byteLength % 2 !== 0) {
+                  console.warn("Unvollständige Audiodaten empfangen, Bytes nicht durch 2 teilbar.");
+                  return; // Unvollständige Daten ignorieren oder hier um weitere Verarbeitung kümmern
+                }
+            
+                // Erstelle einen Int16Array
+                const int16Array = new Int16Array(arrayBuffer);
+            
+                // Sende das Audio an die OpenAI API
+                client.appendInputAudio(int16Array);
+              } catch (error) {
+                console.error("Fehler bei der Verarbeitung des Audios:", error);
+              }
         };
       })
       .catch((error) => console.error('Mikrofonzugriff verweigert:', error));
