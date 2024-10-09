@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import RealtimeAudioChat from './RealtimeAudioChat'; // Importiere die Echtzeit-Audio-Komponente
+import RealtimeChat from './RealtimeChat'; // Importiere die Echtzeit-Audio-Komponente
 import AudioFileUploader from './AudioFileUploader'; // Importiere die Audio-Upload-Komponente
 import AudioRecorder from './AudioRecorder'; // Importiere die Audio-Recorder-Komponente
 
@@ -25,7 +25,7 @@ const App = () => {
 
       {/* Bedingtes Rendern der Komponenten basierend auf dem aktiven Zustand */}
       <div style={{ marginTop: '20px' }}>
-        {activeComponent === 'realtime' && <RealtimeAudioChat />}
+        {activeComponent === 'realtime' && <RealtimeChat />}
         {activeComponent === 'uploader' && <AudioFileUploader />}
         {activeComponent === 'recorder' && <AudioRecorder />}
       </div>

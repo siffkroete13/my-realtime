@@ -1,5 +1,3 @@
-import React, { useEffect } from 'react';
-import { RealtimeClient } from '@openai/realtime-api-beta';
 
 import React, { useState, useEffect } from 'react';
 import { RealtimeClient } from '@openai/realtime-api-beta';
