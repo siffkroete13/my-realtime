@@ -23,17 +23,17 @@ const AudioRecorder = () => {
 
   // Startet die Aufnahme
   const startRecording = () => {
-    setAudioChunks([]);
+    setAudioChunks([]);  // Leere vorherige Audio-Chunks
     mediaRecorder.start();
     setIsRecording(true);
   };
 
-  // Stoppt die Aufnahme
+  // Stoppt die Aufnahme und speichert die Datei
   const stopRecording = () => {
     mediaRecorder.stop();
     setIsRecording(false);
 
-    // Erstelle die Audio-URL und speichere die Datei
+    // Wenn die Aufnahme gestoppt wird, erstelle die Audio-URL
     mediaRecorder.onstop = () => {
       const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
