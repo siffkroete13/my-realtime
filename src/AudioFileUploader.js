@@ -1,33 +1,84 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RealtimeClient } from '@openai/realtime-api-beta';
 
 const AudioFileUploader = () => {
   const [file, setFile] = useState(null);
-  const [client, setClient] = useState(null);
+  const clientRef = useRef(null);  // Verwende useRef für den RealtimeClient
   const [response, setResponse] = useState('');
+  const [audioUrl, setAudioUrl] = useState('');
+  const [clientInitialized, setClientInitialized] = useState(false);  // Um zu verhindern, dass der Client mehrfach initialisiert wird
 
-  // Initialisiere den RealtimeClient, wenn die Komponente geladen wird
+  // Initialisiere den RealtimeClient und registriere den Event-Handler
   useEffect(() => {
     const initClient = async () => {
-      const realtimeClient = new RealtimeClient({
-        apiKey: process.env.REACT_APP_OPENAI_API_KEY,
-        dangerouslyAllowAPIKeyInBrowser: true,
-      });
+      try {
+        const realtimeClient = new RealtimeClient({
+          apiKey: process.env.REACT_APP_OPENAI_API_KEY,
+          dangerouslyAllowAPIKeyInBrowser: true,
+        });
 
-      await realtimeClient.connect();
-      setClient(realtimeClient);
+        clientRef.current = realtimeClient;
 
-      // Update Session Parameter
-      realtimeClient.updateSession({ instructions: 'You are a great, upbeat friend.' });
-      realtimeClient.updateSession({ voice: 'alloy' });
-      realtimeClient.updateSession({
-        turn_detection: { type: 'none' }, // oder 'server_vad' für Pausenerkennung
-        input_audio_transcription: { model: 'whisper-1' },
-      });
+        // Verbinde mit der API
+        await realtimeClient.connect();
+        
+        // Setze die Sitzungseinstellungen (Beachte die richtige Reihenfolge)
+        await realtimeClient.updateSession({ 
+            instructions: 'Du bist ein großartiger Gesprächspartner, der auch auf Audio antworten kann.' 
+        });
+        await realtimeClient.updateSession({ voice: 'alloy' });
+        await realtimeClient.updateSession({
+          turn_detection: { type: 'none' }, // oder 'server_vad'
+          input_audio_transcription: { model: 'whisper-1', language: 'de' },
+        });
+        /*
+        await realtimeClient.sendUserMessageContent([
+            { type: 'input_audio', audio: new Int16Array(0) },
+        ]);
+        */
+
+        // Event-Handler für GPT-Antworten
+        realtimeClient.on('conversation.updated', (event) => {
+          const { item } = event;
+
+          if (item.status === 'completed') {
+            const items = realtimeClient.conversation.getItems();
+            const lastItem = items[items.length - 1];
+
+            if (lastItem.role === 'assistant') {
+              if (lastItem.content[0]?.type === 'text') {
+                setResponse(lastItem.content[0].text);
+              } else if (lastItem.content[0]?.type === 'audio') {
+                const transcript = lastItem.content[0].transcript;
+                setResponse(transcript);
+
+                // Audio-Daten extrahieren und im UI abspielen
+                const audioData = lastItem.formatted.audio;
+                const audioArrayBuffer = new Uint8Array(Object.values(audioData)).buffer;
+                const audioBlob = new Blob([audioArrayBuffer], { type: 'audio/wav' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                setAudioUrl(audioUrl);
+              }
+            } else {
+                setResponse(lastItem.content[0].text);
+            }
+          }
+        });
+
+        // realtimeClient.createResponse();
+
+        clientRef.current = realtimeClient;
+
+        setClientInitialized(true);  // Markiere den Client als initialisiert
+      } catch (error) {
+        console.error('Fehler beim Initialisieren des Clients:', error);
+      }
     };
 
-    initClient(); // Initialisiere den Client beim Laden der Komponente
-  }, []);
+    if (!clientInitialized) {
+      initClient();  // Nur einmal den Client initialisieren
+    }
+  }, [clientInitialized]);
 
   // Verarbeite die Datei
   const handleFileChange = (e) => {
@@ -37,39 +88,74 @@ const AudioFileUploader = () => {
 
   // Sende die Audiodatei an die API
   const sendAudioFile = async () => {
-    if (file && client) {
-      const arrayBuffer = await file.arrayBuffer();
-      const int16Array = new Int16Array(arrayBuffer);
+    if (file && clientRef.current) {
+      try {
+        // Lese die Datei als ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
 
-      // Sende das Audio an die API
-      client.appendInputAudio(int16Array);
+        // Erstelle einen AudioContext
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-      // Fordere die Antwort an
-      client.createResponse();
+        // Dekodiere die Audiodaten
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-      // Event-Handler für die GPT-Antwort
-      client.on('conversation.updated', (event) => {
-        const { item } = event;
+        // Extrahiere die PCM-Daten vom ersten Kanal
+        const pcmData = audioBuffer.getChannelData(0); // Float32Array mit Werten zwischen -1 und 1
 
-        if (item.status === 'completed') {
-          const items = client.conversation.getItems();
-          const gptResponse = items[items.length - 1].text;
-          setResponse(gptResponse);
-        }
-      });
+        // Konvertiere Float32Array in Int16Array
+        const int16Array = floatTo16BitPCM(pcmData);
+
+        // Sende das Audio an die API
+        // clientRef.current.appendInputAudio(int16Array);
+        
+        await clientRef.current.sendUserMessageContent([
+            { type: 'input_audio', audio: int16Array },
+        ]);
+        
+
+        // Fordere die Antwort an
+        // clientRef.current.createResponse();
+      } catch (error) {
+        console.error('Fehler beim Senden der Audiodatei:', error);
+      }
+    }
+  };
+
+  // Hilfsfunktion zum Konvertieren von Float32Array in Int16Array
+  function floatTo16BitPCM(float32Array) {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+      let s = Math.max(-1, Math.min(1, float32Array[i]));
+      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return int16Array;
+  }
+
+  // Funktion zum Senden der Testnachricht
+  const sendTestMessage = () => {
+    if (clientRef.current) {
+      clientRef.current.sendUserMessageContent([{ type: 'text', text: 'Hast du meine Audiodatei erhalten?' }]);
     }
   };
 
   return (
     <div>
-      <h1>Einmalige Audio Datei senden</h1>
+      <h1>Einmalige Audiodatei senden</h1>
       <input type="file" accept="audio/*" onChange={handleFileChange} />
       <button onClick={sendAudioFile} disabled={!file}>Senden</button>
+      <button onClick={sendTestMessage}>Testnachricht senden</button>
 
       {response && (
         <div>
           <h2>GPT Antwort:</h2>
           <p>{response}</p>
+        </div>
+      )}
+
+      {audioUrl && (
+        <div>
+          <h2>GPT Audio Antwort:</h2>
+          <audio src={audioUrl} controls />
         </div>
       )}
     </div>
