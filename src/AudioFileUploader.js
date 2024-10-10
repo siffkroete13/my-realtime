@@ -20,29 +20,29 @@ const AudioFileUploader = () => {
         clientRef.current = realtimeClient;
 
         // Verbinde mit der API
-        await realtimeClient.connect();
+        await  clientRef.current.connect();
         
         // Setze die Sitzungseinstellungen (Beachte die richtige Reihenfolge)
-        await realtimeClient.updateSession({ 
-            instructions: 'Du bist ein großartiger Gesprächspartner, der auch auf Audio antworten kann.' 
+        await  clientRef.current.updateSession({ 
+            instructions: 'Du bist ein großartiger Gesprächspartner, antworte mir auch auf audio dateien, auf deren Inhalt.' 
         });
-        await realtimeClient.updateSession({ voice: 'alloy' });
-        await realtimeClient.updateSession({
-          turn_detection: { type: 'none' }, // oder 'server_vad'
-          input_audio_transcription: { model: 'whisper-1', language: 'de' },
+        await clientRef.current.updateSession({ voice: 'alloy' });
+        await  clientRef.current.updateSession({
+          turn_detection: { type: 'none' }, // none oder 'server_vad'
+          input_audio_transcription: { model: 'whisper-1' },
         });
         /*
-        await realtimeClient.sendUserMessageContent([
+        await  clientRef.current.sendUserMessageContent([
             { type: 'input_audio', audio: new Int16Array(0) },
         ]);
         */
 
         // Event-Handler für GPT-Antworten
-        realtimeClient.on('conversation.updated', (event) => {
+        clientRef.current.on('conversation.updated', (event) => {
           const { item } = event;
 
           if (item.status === 'completed') {
-            const items = realtimeClient.conversation.getItems();
+            const items =  clientRef.current.conversation.getItems();
             const lastItem = items[items.length - 1];
 
             if (lastItem.role === 'assistant') {
@@ -65,9 +65,7 @@ const AudioFileUploader = () => {
           }
         });
 
-        // realtimeClient.createResponse();
-
-        clientRef.current = realtimeClient;
+        clientRef.current.createResponse();
 
         setClientInitialized(true);  // Markiere den Client als initialisiert
       } catch (error) {
